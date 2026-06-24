@@ -42,20 +42,36 @@ def build_sources() -> list:
 
 
 def collect(sources, db: DB) -> int:
+    """Collect ads using per-term count from SEARCH_TERMS_CONFIG for cost control."""
     new = 0
     for src in sources:
         for country in config.COUNTRIES:
-            try:
-                for ad in src.fetch_ads(
-                    country=country,
-                    page_ids=config.COMPETITOR_PAGE_IDS or None,
-                    search_terms=config.SEARCH_TERMS or None,
-                    limit=config.MAX_ADS_PER_QUERY,
-                ):
-                    if db.upsert(ad):
-                        new += 1
-            except Exception as e:
-                print(f"[collect] {src.name}/{country} failed: {e}")
+            # Page IDs: one call per country
+            if config.COMPETITOR_PAGE_IDS:
+                try:
+                    for ad in src.fetch_ads(
+                        country=country,
+                        page_ids=config.COMPETITOR_PAGE_IDS,
+                        limit=config.MAX_ADS_PER_QUERY,
+                    ):
+                        if db.upsert(ad): new += 1
+                except Exception as e:
+                    print(f"[collect] {src.name}/pages/{country}: {e}")
+
+            # Search terms: per-term count (primary gets more, secondary gets less)
+            for term_cfg in config.SEARCH_TERMS_CONFIG:
+                term  = term_cfg["term"]
+                count = term_cfg.get("count", 50)
+                try:
+                    for ad in src.fetch_ads(
+                        country=country,
+                        search_terms=[term],
+                        limit=count,
+                    ):
+                        if db.upsert(ad): new += 1
+                except Exception as e:
+                    print(f"[collect] {src.name}/{country}/{term}: {e}")
+
     print(f"[collect] {new} new ad(s)")
     return new
 

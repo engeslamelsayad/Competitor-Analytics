@@ -1,7 +1,6 @@
 """
-Central configuration for the Scout — competitive-intelligence agent.
-Secrets come from environment variables (Railway variables / .env).
-Edit the non-secret lists (competitors, countries, store context) here.
+Central configuration for the Scout agent.
+Secrets come from environment variables (Railway Variables / .env).
 """
 
 import os
@@ -13,55 +12,71 @@ except ImportError:
     pass
 
 # --- Secrets ------------------------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL", "")          # Railway Postgres+pgvector
+DATABASE_URL      = os.environ.get("DATABASE_URL", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
-APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
-META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")  # only for official-API fallback
+VOYAGE_API_KEY    = os.environ.get("VOYAGE_API_KEY", "")
+APIFY_TOKEN       = os.environ.get("APIFY_TOKEN", "")
+META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
 
-# --- Which data sources to use ------------------------------------------------
-# "apify"   -> scrape public Ad Library via Apify (real MENA commercial coverage)
-# "meta_api"-> official API (free, but commercial = EU/UK only)
-META_SOURCE = os.environ.get("META_SOURCE", "apify")
-USE_TIKTOK = os.environ.get("USE_TIKTOK", "true").lower() == "true"
+# --- Data sources -------------------------------------------------------------
+META_SOURCE        = os.environ.get("META_SOURCE", "apify")
+USE_TIKTOK         = os.environ.get("USE_TIKTOK", "true").lower() == "true"
+APIFY_META_ACTOR   = os.environ.get("APIFY_META_ACTOR",
+                                    "curious_coder~facebook-ads-library-scraper")
+APIFY_TIKTOK_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR",
+                                    "doliz~tiktok-creative-center-scraper")
+META_API_VERSION   = os.environ.get("META_API_VERSION", "v22.0")
 
-# Apify actors (pick from Apify Store; field mapping may need light tweaks).
-APIFY_META_ACTOR = os.environ.get("APIFY_META_ACTOR", "curious_coder/facebook-ads-library-scraper")
-APIFY_TIKTOK_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "doliz/tiktok-creative-center-scraper")
+# --- WHO + WHERE to track -----------------------------------------------------
+COMPETITOR_PAGE_IDS: list[str] = []
 
-# Official Meta API (fallback)
-META_API_VERSION = os.environ.get("META_API_VERSION", "v22.0")
+# ── Smart Search Terms ────────────────────────────────────────────────────────
+# بدل ما تحط list بسيطة، حدد لكل term حجمها عشان تتحكم في التكلفة.
+# "primary"  → أوسع مصطلح يعبّر عن الفئة → count كبير (150-200)
+# "secondary" → مصطلحات تانية مترادفة أو أضيق → count صغير (30-50)
+#
+# مثال: منتج بواسير
+# SEARCH_TERMS_CONFIG = [
+#     {"term": "بواسير",          "count": 150, "primary": True},
+#     {"term": "بخاخ بواسير",    "count": 30},
+#     {"term": "علاج بواسير",    "count": 30},
+#     {"term": "اعشاب بواسير",   "count": 30},
+# ]
+#
+# لو عندك منتج واحد وكلمة بحث واحدة، سيب القائمة البسيطة:
+SEARCH_TERMS_CONFIG: list[dict] = [
+    {"term": "Yularay", "count": 150, "primary": True},
+]
 
-# --- WHO + WHERE --------------------------------------------------------------
-COMPETITOR_PAGE_IDS: list[str] = ["786079437911484"]
-SEARCH_TERMS: list[str] = ["Yularay"]
-COUNTRIES = ["EG"]   # GCC + Egypt; edit freely
+# للتوافق مع الكود القديم — مش تلمسه
+SEARCH_TERMS: list[str] = [c["term"] for c in SEARCH_TERMS_CONFIG]
 
-# --- Store context (fed into the Scout's reasoning) ---------------------------
+COUNTRIES = ["SA", "AE", "EG"]
+
+# --- Store context ------------------------------------------------------------
 STORE = {
-    "name": "Junara",
-    "category": "cosmetics",          # فئة منتجك
-    "country": "EG",                  # سوقك الأساسي
-    "platform": "Shopify",
-    "brand_voice": "حنونه و عطوفه",
-    "current_campaigns": "منتجات لعلاج الاسنان",
-    "past_winners": "",
+    "name":             "متجرك",
+    "category":         "skincare",
+    "country":          "SA",
+    "platform":         "Shopify",
+    "brand_voice":      "اكتب نبرة البراند وجمهورك المستهدف.",
+    "current_campaigns":"الحملات الشغّالة دلوقتي.",
+    "past_winners":     "الإعلانات اللي اشتغلت قبل كده.",
 }
 
 # --- Models -------------------------------------------------------------------
-EMBED_MODEL = "voyage-3"             # أحسن للعربي من ada-002
-EMBED_DIM = 1024                     # لازم يطابق عمود vector() في schema.sql
-LABEL_MODEL = "claude-haiku-4-5-20251001"   # تسمية رخيصة للـ clusters
-SCOUT_MODEL = "claude-sonnet-4-6"           # التفكير الأساسي
+EMBED_MODEL  = "voyage-3"
+EMBED_DIM    = 1024
+LABEL_MODEL  = "claude-haiku-4-5-20251001"
+SCOUT_MODEL  = "claude-sonnet-4-6"
 
 # --- Brain params -------------------------------------------------------------
-MIN_CLUSTER_SIZE = 4                 # أقل من 4 إعلانات = إشارة ضعيفة
-DIFF_WINDOW_DAYS = 14                # نقارن النهاردة بكام يوم فاتوا
-CLUSTER_MATCH_THRESHOLD = 0.72       # cosine لمطابقة theme عبر اللقطات
-CONFIDENCE_FLOOR = 0.60              # تحت كده الـ Scout ميطلّعش brief
-SEASONAL_WINDOW_DAYS = 21            # نبدأ نحقن الموسم قبله بكام يوم
+MIN_CLUSTER_SIZE        = 4
+DIFF_WINDOW_DAYS        = 14
+CLUSTER_MATCH_THRESHOLD = 0.72
+CONFIDENCE_FLOOR        = 0.60
+SEASONAL_WINDOW_DAYS    = 21
+WINNER_DAYS_THRESHOLD   = 30
 
-WINNER_DAYS_THRESHOLD = 30           # إشارة longevity إضافية
-MAX_ADS_PER_QUERY = 200
-
-REPORT_DIR = os.environ.get("REPORT_DIR", "reports")
+MAX_ADS_PER_QUERY = 200   # fallback لو مش بتستخدم SEARCH_TERMS_CONFIG
+REPORT_DIR        = os.environ.get("REPORT_DIR", "reports")
