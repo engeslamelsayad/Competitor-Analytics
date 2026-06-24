@@ -73,7 +73,8 @@ def label_clusters(clusters: list[dict], api_key: str, model: str) -> None:
         )
         text = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
         labels = json.loads(text)
-    except Exception:
+    except Exception as e:
+        print(f"[cluster] label_clusters failed: {e}")
         labels = {}
 
     for i, c in enumerate(clusters):
