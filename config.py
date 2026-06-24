@@ -34,8 +34,8 @@ META_API_VERSION = os.environ.get("META_API_VERSION", "v22.0")
 
 # --- WHO + WHERE --------------------------------------------------------------
 COMPETITOR_PAGE_IDS: list[str] = ["786079437911484"]
-SEARCH_TERMS: list[str] = ["Yularay", "cosmetics"]
-COUNTRIES = ["SA", "AE", "EG"]   # GCC + Egypt; edit freely
+SEARCH_TERMS: list[str] = ["Yularay"]
+COUNTRIES = ["EG"]   # GCC + Egypt; edit freely
 
 # --- Store context (fed into the Scout's reasoning) ---------------------------
 STORE = {
