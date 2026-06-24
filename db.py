@@ -145,8 +145,21 @@ class DB:
 
     def new_competitors_since(self, hours: int = 26) -> list[dict]:
         """Page names that appeared for the first time within the last N hours.
-        'hours' is slightly over 24 so we never miss a run that fires late."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        Returns empty list on first 48h (no baseline yet — every brand is "new")."""
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=hours)
+
+        # Guard: if oldest record is less than 48h old, we have no baseline yet.
+        oldest = self.conn.execute(
+            "SELECT MIN(first_seen) FROM competitor_snapshots"
+        ).fetchone()
+        if not oldest or not oldest[0]:
+            return []
+        db_age_hours = (now - oldest[0]).total_seconds() / 3600
+        if db_age_hours < 48:
+            print(f"[alerts] skipping new-competitor check — DB is only {db_age_hours:.0f}h old (need 48h baseline)")
+            return []
+
         rows = self.conn.execute(
             """SELECT page_name, country, source,
                       COUNT(*)          AS ad_count,
@@ -160,16 +173,15 @@ class DB:
             (cutoff,),
         ).fetchall()
         cols = ["page_name", "country", "source", "ad_count", "first_seen", "sample_url"]
-        # Filter to truly new: page must not exist before cutoff
         truly_new = []
         for r in rows:
             d = dict(zip(cols, r))
-            old = self.conn.execute(
+            existing = self.conn.execute(
                 """SELECT 1 FROM competitor_snapshots
                    WHERE page_name = %s AND first_seen < %s LIMIT 1""",
                 (d["page_name"], cutoff),
             ).fetchone()
-            if not old:
+            if not existing:
                 truly_new.append(d)
         return truly_new
 
