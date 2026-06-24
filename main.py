@@ -20,6 +20,7 @@ from diff import diff_clusters
 from scout import reason
 from calendar_mena import upcoming_events
 from report import write_brief
+from telegram import send_brief
 
 
 # Max ads to embed per run — keeps us within Voyage free-tier rate limits.
@@ -109,6 +110,7 @@ def main() -> None:
     longest = db.longest_running(config.WINNER_DAYS_THRESHOLD)
     path = write_brief(brief, diff_result, longest, calendar, config.REPORT_DIR)
 
+    send_brief(brief, diff_result, longest, calendar)
     db.close()
     print(f"✅ done — {event_type} — brief at {path}")
 
