@@ -98,10 +98,10 @@ class TikTokCCSource(AdSource):
                 "target": "Top Ads Dashboard",
                 "cookies": self.cookies,
                 # Top Ads Dashboard settings:
-                "search":  term or "",
-                "region":  region,
-                "period":  "Last 7 days",
-                "sortBy":  "For You",
+                "dashboard_search":  term or "",
+                "dashboard_region":  region,
+                "dashboard_period":  "Last 7 days",
+                "dashboard_sort_by":  "For You",
                 "limit":   min(limit, 50),   # actor default max per page
                 "page":    1,
             }
