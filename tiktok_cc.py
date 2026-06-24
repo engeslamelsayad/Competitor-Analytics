@@ -9,7 +9,11 @@ Apify actor. Same caveat as Meta: adjust _map() to your chosen actor's schema.
 import requests
 from typing import Iterator
 from .base import AdSource, NormalizedAd
-from .apify_meta import _g
+def _g(d: dict, *keys, default=""):
+    for k in keys:
+        if k in d and d[k] not in (None, ""):
+            return d[k]
+    return default
 
 
 class TikTokCCSource(AdSource):

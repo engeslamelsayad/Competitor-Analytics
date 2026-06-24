@@ -26,8 +26,8 @@ META_SOURCE = os.environ.get("META_SOURCE", "apify")
 USE_TIKTOK = os.environ.get("USE_TIKTOK", "true").lower() == "true"
 
 # Apify actors (pick from Apify Store; field mapping may need light tweaks).
-APIFY_META_ACTOR = os.environ.get("APIFY_META_ACTOR", "apify~facebook-ads-scraper")
-APIFY_TIKTOK_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "apify~tiktok-creative-center-scraper")
+APIFY_META_ACTOR = os.environ.get("APIFY_META_ACTOR", "curious_coder/facebook-ads-library-scraper")
+APIFY_TIKTOK_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "doliz/tiktok-creative-center-scraper")
 
 # Official Meta API (fallback)
 META_API_VERSION = os.environ.get("META_API_VERSION", "v22.0")
