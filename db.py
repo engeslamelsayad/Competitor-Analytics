@@ -140,3 +140,79 @@ class DB:
 
     def close(self):
         self.conn.close()
+
+    # --- alerts helpers -------------------------------------------------------
+
+    def new_competitors_since(self, hours: int = 26) -> list[dict]:
+        """Page names that appeared for the first time within the last N hours.
+        'hours' is slightly over 24 so we never miss a run that fires late."""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        rows = self.conn.execute(
+            """SELECT page_name, country, source,
+                      COUNT(*)          AS ad_count,
+                      MIN(first_seen)   AS first_seen,
+                      MAX(snapshot_url) AS sample_url
+               FROM competitor_snapshots
+               WHERE first_seen >= %s
+               GROUP BY page_name, country, source
+               HAVING COUNT(*) >= 2
+               ORDER BY ad_count DESC""",
+            (cutoff,),
+        ).fetchall()
+        cols = ["page_name", "country", "source", "ad_count", "first_seen", "sample_url"]
+        # Filter to truly new: page must not exist before cutoff
+        truly_new = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            old = self.conn.execute(
+                """SELECT 1 FROM competitor_snapshots
+                   WHERE page_name = %s AND first_seen < %s LIMIT 1""",
+                (d["page_name"], cutoff),
+            ).fetchone()
+            if not old:
+                truly_new.append(d)
+        return truly_new
+
+    def winning_creatives_unsent(self, min_days: int = 14, limit: int = 15) -> list[dict]:
+        """Ads running >= min_days that have NOT been sent in a previous digest."""
+        # Get already-sent ad_ids from agent_events
+        sent_rows = self.conn.execute(
+            """SELECT payload->'ad_ids' AS ids
+               FROM agent_events
+               WHERE type = 'creative_digest_sent'
+               ORDER BY ts DESC LIMIT 30"""
+        ).fetchall()
+        sent_ids: set[str] = set()
+        for row in sent_rows:
+            ids = row[0]
+            if isinstance(ids, list):
+                sent_ids.update(str(i) for i in ids)
+            elif isinstance(ids, str):
+                import json as _j
+                try:
+                    sent_ids.update(str(i) for i in _j.loads(ids))
+                except Exception:
+                    pass
+
+        rows = self.conn.execute(
+            """SELECT ad_id, page_name, country, body, snapshot_url,
+                      start_time,
+                      EXTRACT(DAY FROM (now() - start_time))::int AS days
+               FROM competitor_snapshots
+               WHERE start_time IS NOT NULL
+                 AND (stop_time IS NULL OR stop_time > now())
+               ORDER BY start_time ASC
+               LIMIT 200"""
+        ).fetchall()
+        cols = ["ad_id", "page_name", "country", "body", "snapshot_url", "start_time", "days"]
+        result = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            if (d["days"] or 0) >= min_days and d["ad_id"] not in sent_ids:
+                result.append(d)
+        return result[:limit]
+
+    def mark_digest_sent(self, ad_ids: list[str]) -> None:
+        """Record which ad_ids were sent so they won't repeat tomorrow."""
+        import json as _j
+        self.emit_event("creative_digest_sent", 1.0, {"ad_ids": ad_ids})

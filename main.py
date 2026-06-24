@@ -21,6 +21,7 @@ from scout import reason
 from calendar_mena import upcoming_events
 from report import write_brief
 from telegram import send_brief
+from alerts import new_competitor_alert, winning_creatives_digest
 
 
 # Max ads to embed per run — keeps us within Voyage free-tier rate limits.
@@ -111,6 +112,8 @@ def main() -> None:
     path = write_brief(brief, diff_result, longest, calendar, config.REPORT_DIR)
 
     send_brief(brief, diff_result, longest, calendar)
+    new_competitor_alert(db)
+    winning_creatives_digest(db, min_days=14)
     db.close()
     print(f"✅ done — {event_type} — brief at {path}")
 
