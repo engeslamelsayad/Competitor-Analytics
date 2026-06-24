@@ -46,12 +46,13 @@ COMPETITOR_PAGE_IDS: list[str] = []
 # لو عندك منتج واحد وكلمة بحث واحدة، سيب القائمة البسيطة:
 SEARCH_TERMS_CONFIG: list[dict] = [
     {"term": "Yularay", "count": 150, "primary": True},
+    {"term": "Junara", "count": 30},
 ]
 
 # للتوافق مع الكود القديم — مش تلمسه
 SEARCH_TERMS: list[str] = [c["term"] for c in SEARCH_TERMS_CONFIG]
 
-COUNTRIES = ["SA", "AE", "EG"]
+COUNTRIES = ["EG"]
 
 # --- Store context ------------------------------------------------------------
 STORE = {
