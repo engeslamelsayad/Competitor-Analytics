@@ -34,22 +34,22 @@ META_API_VERSION = os.environ.get("META_API_VERSION", "v22.0")
 
 # --- WHO + WHERE --------------------------------------------------------------
 COMPETITOR_PAGE_IDS: list[str] = [
-    # "1234567890",
+     "786079437911484",
 ]
 SEARCH_TERMS: list[str] = [
-    # "اسم المنتج/المنافس", "skincare", ...
+     "Yularay", "cosmetics", ...
 ]
 COUNTRIES = ["SA", "AE", "EG"]   # GCC + Egypt; edit freely
 
 # --- Store context (fed into the Scout's reasoning) ---------------------------
 STORE = {
-    "name": "متجرك",
-    "category": "skincare",          # فئة منتجك
-    "country": "SA",                  # سوقك الأساسي
+    "name": "Junara",
+    "category": "cosmetics",          # فئة منتجك
+    "country": "EG",                  # سوقك الأساسي
     "platform": "Shopify",
-    "brand_voice": "اكتب نبرة البراند: قيمك، أسلوبك، الجمهور المستهدف.",
-    "current_campaigns": "الحملات الشغّالة دلوقتي (لو فيه).",
-    "past_winners": "الإعلانات/الزوايا اللي اشتغلت معاك قبل كده.",
+    "brand_voice": "حنونه و عطوفه",
+    "current_campaigns": "منتجات لعلاج الاسنان",
+    "past_winners": "",
 }
 
 # --- Models -------------------------------------------------------------------
