@@ -6,7 +6,7 @@ Scout orchestrator — one run.
   -> persist clusters            ->  diff vs ~14d ago
   -> reason (Claude)             ->  emit event + write brief
 
-Run on Railway via cron (e.g. every 4h or daily).  Locally: python main.py
+Run on Railway via cron (e.g. every 4h or daily). Locally: python main.py
 """
 
 from datetime import date, timedelta
@@ -20,6 +20,11 @@ from diff import diff_clusters
 from scout import reason
 from calendar_mena import upcoming_events
 from report import write_brief
+
+
+# Max ads to embed per run — keeps us within Voyage free-tier rate limits.
+# Remaining unemedded ads are picked up automatically in the next run.
+EMBED_PER_RUN = 150
 
 
 def build_sources() -> list:
@@ -54,14 +59,19 @@ def collect(sources, db: DB) -> int:
 
 
 def embed_new(db: DB) -> None:
+    """Embed up to EMBED_PER_RUN ads per run — respects Voyage free-tier limits.
+    Remaining ads are picked up automatically in the next cron run."""
     pending = db.needs_embedding()
     if not pending:
         return
+    batch = pending[:EMBED_PER_RUN]
+    if len(pending) > EMBED_PER_RUN:
+        print(f"[embed] {len(pending)} pending — doing {EMBED_PER_RUN} this run, rest next run")
     embedder = Embedder(config.VOYAGE_API_KEY, config.EMBED_MODEL)
-    texts = [creative_text(a) for a in pending]
+    texts = [creative_text(a) for a in batch]
     print(f"[embed] {len(texts)} ad(s)")
     vectors = embedder.embed(texts)
-    for ad, vec in zip(pending, vectors):
+    for ad, vec in zip(batch, vectors):
         db.save_embedding(ad["ad_id"], vec)
 
 
@@ -83,12 +93,15 @@ def main() -> None:
         db.save_cluster(run_date, c.get("theme"), c["size"],
                         c["competitor_count"], sample_ids, c["centroid"])
 
-    previous = db.clusters_on_or_before(run_date - timedelta(days=config.DIFF_WINDOW_DAYS))
-    diff_result = diff_clusters(today_clusters, previous, config.CLUSTER_MATCH_THRESHOLD)
+    previous = db.clusters_on_or_before(
+        run_date - timedelta(days=config.DIFF_WINDOW_DAYS))
+    diff_result = diff_clusters(
+        today_clusters, previous, config.CLUSTER_MATCH_THRESHOLD)
 
     calendar = upcoming_events(config.SEASONAL_WINDOW_DAYS)
-    brief = reason(config.STORE, diff_result, previous, calendar,
-                   config.ANTHROPIC_API_KEY, config.SCOUT_MODEL, config.CONFIDENCE_FLOOR)
+    brief = reason(
+        config.STORE, diff_result, previous, calendar,
+        config.ANTHROPIC_API_KEY, config.SCOUT_MODEL, config.CONFIDENCE_FLOOR)
 
     event_type = "opportunity_brief" if brief.get("emit") else "noop"
     db.emit_event(event_type, float(brief.get("confidence", 0)), brief)
