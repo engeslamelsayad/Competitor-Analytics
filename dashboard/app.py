@@ -24,7 +24,7 @@ PASSWORD     = os.environ.get("DASHBOARD_PASSWORD", "scout2026")
 COUNTRIES_LIST = [
     ("SA","السعودية"),("AE","الإمارات"),("EG","مصر"),
     ("KW","الكويت"),("QA","قطر"),("BH","البحرين"),
-    ("OM","عُمان"),("MA","المغرب"),("SY","سوريا"),("JO","الأردن"),("LB","لبنان"),("PS","فلسطين"),("IQ","العراق"),("LY","ليبيا"),
+    ("OM","عُمان"),("MA","المغرب"),
 ]
 
 # ── manual run state ────────────────────────────────────────────────────────
@@ -187,19 +187,34 @@ def api_runs():
 # Manual run
 # ═══════════════════════════════════════════════════════════════════════════
 def _run_scout():
-    import io, contextlib
-    buf = io.StringIO()
+    import subprocess
+    main_py = os.path.join(ROOT, 'main.py')
+    if not os.path.exists(main_py):
+        _run_status["done_msg"] = "❌ main.py غير موجود — تحقق من Root Directory في Railway"
+        _run_status["running"] = False
+        return
     try:
-        with contextlib.redirect_stdout(buf):
-            import importlib, main as scout_main
-            importlib.reload(scout_main)
-            scout_main.main()
-        _run_status["done_msg"] = "✅ اكتمل بنجاح"
+        proc = subprocess.Popen(
+            [sys.executable, main_py],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=os.environ.copy(),
+            cwd=ROOT,
+        )
+        lines = []
+        for line in proc.stdout:
+            lines.append(line.rstrip())
+            _run_status["log"] = lines[-60:]
+        proc.wait()
+        _run_status["done_msg"] = (
+            "✅ اكتمل بنجاح" if proc.returncode == 0
+            else f"❌ exit code {proc.returncode}"
+        )
     except Exception as e:
         _run_status["done_msg"] = f"❌ {e}"
     finally:
         _run_status["running"] = False
-        _run_status["log"] = buf.getvalue().splitlines()
 
 @app.route("/api/run", methods=["POST"])
 @login_required
