@@ -12,8 +12,11 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 # ── path so we can import Scout modules for manual run ──────────────────────
+# When deployed with Root Directory empty and started as dashboard.app:app
+# __file__ = /app/dashboard/app.py → ROOT = /app (where main.py lives)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, 'dashboard'))  # for dashboard-local imports
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me")
