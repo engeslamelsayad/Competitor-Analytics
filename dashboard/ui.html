@@ -456,7 +456,13 @@ async function runNow() {
   const btn = document.getElementById('run-now-btn');
   btn.disabled = true;
   const resp = await fetch('/api/run', {method:'POST'}).then(r=>r.json());
-  if (resp.error) { alert(resp.error); btn.disabled=false; return; }
+  if (!resp.ok && resp.error === 'railway_cron') {
+    document.getElementById('run-log').style.display = 'block';
+    document.getElementById('run-log').textContent = resp.message;
+    btn.disabled = false;
+    return;
+  }
+  if (!resp.ok) { alert(resp.error || 'خطأ'); btn.disabled=false; return; }
   document.getElementById('run-log').style.display = 'block';
   runPollTimer = setInterval(pollRunStatus, 3000);
 }

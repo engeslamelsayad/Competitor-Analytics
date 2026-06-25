@@ -219,6 +219,19 @@ def _run_scout():
 @app.route("/api/run", methods=["POST"])
 @login_required
 def api_run():
+    """
+    Direct subprocess run requires main.py in the same deployment context.
+    When Root Directory = 'dashboard', main.py is not deployed here.
+    Solution: trigger via Railway Cron Runs tab, or deploy without Root Directory.
+    For now, attempt subprocess and return clear error if main.py is missing.
+    """
+    main_py = os.path.join(ROOT, 'main.py')
+    if not os.path.exists(main_py):
+        return jsonify({
+            "ok": False,
+            "error": "railway_cron",
+            "message": "main.py غير موجود في هذا الـ deployment. شغّل من Railway → Scout service → Cron Runs → Trigger"
+        }), 200
     if _run_status["running"]:
         return jsonify({"error": "run already in progress"}), 409
     _run_status.update({"running": True, "started_at": datetime.now().strftime("%H:%M:%S"), "log": [], "done_msg": ""})
