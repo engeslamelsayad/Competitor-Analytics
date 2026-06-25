@@ -52,3 +52,44 @@ CREATE TABLE IF NOT EXISTS agent_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_ts ON agent_events (ts);
+
+-- Dashboard config table (single row, updated via dashboard UI)
+CREATE TABLE IF NOT EXISTS scout_config (
+    id          INT PRIMARY KEY DEFAULT 1,
+    data        JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ DEFAULT now(),
+    updated_by  TEXT DEFAULT 'dashboard'
+);
+
+-- Seed with defaults (only if empty)
+INSERT INTO scout_config (id, data) VALUES (1, '{
+    "countries": ["SA", "AE", "EG"],
+    "competitor_page_ids": [],
+    "search_terms_config": [],
+    "store": {
+        "name": "",
+        "category": "",
+        "country": "SA",
+        "platform": "Shopify",
+        "brand_voice": "",
+        "current_campaigns": "",
+        "past_winners": ""
+    },
+    "use_tiktok": true,
+    "confidence_floor": 0.60,
+    "winner_days_threshold": 30
+}'::jsonb)
+ON CONFLICT (id) DO NOTHING;
+
+-- Swipe file: ads saved manually by user with notes
+CREATE TABLE IF NOT EXISTS swipe_file (
+    id           BIGSERIAL PRIMARY KEY,
+    ad_id        TEXT,
+    page_name    TEXT,
+    country      TEXT,
+    body         TEXT,
+    snapshot_url TEXT,
+    notes        TEXT DEFAULT '',
+    tags         TEXT DEFAULT '',
+    saved_at     TIMESTAMPTZ DEFAULT now()
+);

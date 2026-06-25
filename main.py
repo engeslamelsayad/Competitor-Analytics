@@ -93,9 +93,34 @@ def embed_new(db: DB) -> None:
         db.save_embedding(ad["ad_id"], vec)
 
 
+def load_runtime_config(db: DB) -> None:
+    """Merge DB config into config module — DB values override config.py defaults."""
+    live = db.load_config()
+    if not live:
+        return  # no dashboard config yet — use config.py as-is
+
+    if live.get("countries"):
+        config.COUNTRIES = live["countries"]
+    if live.get("competitor_page_ids") is not None:
+        config.COMPETITOR_PAGE_IDS = live["competitor_page_ids"]
+    if live.get("search_terms_config"):
+        config.SEARCH_TERMS_CONFIG = live["search_terms_config"]
+        config.SEARCH_TERMS = [c["term"] for c in config.SEARCH_TERMS_CONFIG]
+    if live.get("store"):
+        config.STORE = live["store"]
+    if "use_tiktok" in live:
+        config.USE_TIKTOK = live["use_tiktok"]
+    if "confidence_floor" in live:
+        config.CONFIDENCE_FLOOR = live["confidence_floor"]
+    if "winner_days_threshold" in live:
+        config.WINNER_DAYS_THRESHOLD = live["winner_days_threshold"]
+    print("[config] loaded live settings from DB (dashboard override active)")
+
+
 def main() -> None:
     db = DB(config.DATABASE_URL)
     db.ensure_schema()
+    load_runtime_config(db)   # ← DB config overrides config.py
 
     collect(build_sources(), db)
     embed_new(db)

@@ -138,6 +138,172 @@ class DB:
             (type_, confidence, json.dumps(payload, ensure_ascii=False)),
         )
 
+    # --- scout_config (dashboard settings) ----------------------------------
+
+    def load_config(self) -> dict:
+        """Load live config from DB. Falls back to empty dict if not seeded."""
+        row = self.conn.execute(
+            "SELECT data FROM scout_config WHERE id = 1"
+        ).fetchone()
+        if row:
+            import json as _j
+            d = row[0]
+            return d if isinstance(d, dict) else _j.loads(d)
+        return {}
+
+    def save_config(self, data: dict, updated_by: str = "dashboard") -> None:
+        import json as _j
+        self.conn.execute(
+            """INSERT INTO scout_config (id, data, updated_at, updated_by)
+               VALUES (1, %s, now(), %s)
+               ON CONFLICT (id) DO UPDATE
+               SET data = EXCLUDED.data,
+                   updated_at = now(),
+                   updated_by = EXCLUDED.updated_by""",
+            (_j.dumps(data, ensure_ascii=False), updated_by),
+        )
+
+    def get_stats(self) -> dict:
+        """Quick stats for the dashboard overview."""
+        total = self.conn.execute(
+            "SELECT COUNT(*) FROM competitor_snapshots"
+        ).fetchone()[0]
+
+        by_country = self.conn.execute(
+            """SELECT country, COUNT(*) FROM competitor_snapshots
+               GROUP BY country ORDER BY COUNT(*) DESC"""
+        ).fetchall()
+
+        by_source = self.conn.execute(
+            """SELECT source, COUNT(*) FROM competitor_snapshots
+               GROUP BY source ORDER BY COUNT(*) DESC"""
+        ).fetchall()
+
+        last_event = self.conn.execute(
+            """SELECT type, confidence, ts, payload
+               FROM agent_events ORDER BY ts DESC LIMIT 1"""
+        ).fetchone()
+
+        last_cluster = self.conn.execute(
+            "SELECT MAX(run_date) FROM clusters"
+        ).fetchone()[0]
+
+        import json as _j
+        return {
+            "total_ads":   total,
+            "by_country":  [{"country": r[0], "count": r[1]} for r in by_country],
+            "by_source":   [{"source": r[0], "count": r[1]} for r in by_source],
+            "last_event":  {
+                "type":       last_event[0] if last_event else None,
+                "confidence": last_event[1] if last_event else None,
+                "ts":         last_event[2].isoformat() if last_event and last_event[2] else None,
+                "brief":      (_j.loads(last_event[3]) if isinstance(last_event[3], str)
+                               else last_event[3]) if last_event and last_event[3] else {},
+            } if last_event else {},
+            "last_cluster_date": last_cluster.isoformat() if last_cluster else None,
+        }
+
+
+    # --- dashboard extra queries -------------------------------------------
+
+    def get_runs_history(self, limit: int = 20) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT id, type, confidence, ts, payload
+               FROM agent_events
+               ORDER BY ts DESC LIMIT %s""", (limit,)
+        ).fetchall()
+        import json as _j
+        out = []
+        for r in rows:
+            payload = r[4]
+            if isinstance(payload, str):
+                try: payload = _j.loads(payload)
+                except: payload = {}
+            new_ads = payload.get("new_ads", 0) if payload else 0
+            out.append({
+                "id": r[0], "type": r[1],
+                "confidence": round(float(r[2] or 0), 2),
+                "ts": r[3].strftime("%Y-%m-%d %H:%M") if r[3] else "",
+                "new_ads": new_ads,
+                "theme": payload.get("theme", "") if payload else "",
+            })
+        return out
+
+    def get_winners(self, min_days: int = 14, limit: int = 30) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT ad_id, page_name, country, body, snapshot_url, start_time,
+                      EXTRACT(DAY FROM (now()-start_time))::int AS days
+               FROM competitor_snapshots
+               WHERE start_time IS NOT NULL
+                 AND (stop_time IS NULL OR stop_time > now())
+               ORDER BY start_time ASC LIMIT 200"""
+        ).fetchall()
+        cols = ["ad_id","page_name","country","body","snapshot_url","start_time","days"]
+        result = [dict(zip(cols,r)) for r in rows if (r[6] or 0) >= min_days]
+        result.sort(key=lambda x: x["days"] or 0, reverse=True)
+        return result[:limit]
+
+    def get_competitor_activity(self) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT page_name, country,
+                 COUNT(*) FILTER (WHERE first_seen >= now()-INTERVAL '7 days') AS this_week,
+                 COUNT(*) FILTER (WHERE first_seen >= now()-INTERVAL '14 days'
+                                    AND first_seen <  now()-INTERVAL '7 days')  AS last_week,
+                 COUNT(*) AS total
+               FROM competitor_snapshots
+               GROUP BY page_name, country
+               HAVING COUNT(*) >= 2
+               ORDER BY this_week DESC, total DESC
+               LIMIT 30"""
+        ).fetchall()
+        cols = ["page_name","country","this_week","last_week","total"]
+        out = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            d["delta"] = (d["this_week"] or 0) - (d["last_week"] or 0)
+            out.append(d)
+        return out
+
+    def get_themes_history(self, limit: int = 60) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT run_date, theme, size, competitor_count
+               FROM clusters
+               ORDER BY run_date DESC, size DESC
+               LIMIT %s""", (limit,)
+        ).fetchall()
+        cols = ["run_date","theme","size","competitor_count"]
+        return [dict(zip(cols, r)) | {"run_date": r[0].isoformat() if r[0] else ""} for r in rows]
+
+    def get_swipe_file(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id,ad_id,page_name,country,body,snapshot_url,notes,tags,saved_at FROM swipe_file ORDER BY saved_at DESC"
+        ).fetchall()
+        cols = ["id","ad_id","page_name","country","body","snapshot_url","notes","tags","saved_at"]
+        return [dict(zip(cols,r)) | {"saved_at": r[8].strftime("%Y-%m-%d") if r[8] else ""} for r in rows]
+
+    def add_to_swipe(self, ad_id: str, page_name: str, country: str,
+                     body: str, snapshot_url: str, notes: str, tags: str) -> int:
+        row = self.conn.execute(
+            """INSERT INTO swipe_file (ad_id,page_name,country,body,snapshot_url,notes,tags)
+               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (ad_id, page_name, country, body, snapshot_url, notes, tags)
+        ).fetchone()
+        return row[0]
+
+    def remove_from_swipe(self, item_id: int) -> None:
+        self.conn.execute("DELETE FROM swipe_file WHERE id=%s", (item_id,))
+
+    def get_top_competitors(self) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT page_name, country, COUNT(*) AS ads,
+                      MIN(first_seen)::date AS since
+               FROM competitor_snapshots
+               GROUP BY page_name, country
+               ORDER BY ads DESC LIMIT 20"""
+        ).fetchall()
+        cols = ["page_name","country","ads","since"]
+        return [dict(zip(cols,r)) | {"since": str(r[3])} for r in rows]
+
     def close(self):
         self.conn.close()
 
