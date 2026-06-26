@@ -78,7 +78,7 @@ def collect(sources, db: DB) -> int:
 
 def embed_new(db: DB) -> None:
     """Embed up to EMBED_PER_RUN ads per run — respects Voyage free-tier limits.
-    Remaining ads are picked up automatically in the next cron run."""
+    Gracefully skips failed batches instead of crashing."""
     pending = db.needs_embedding()
     if not pending:
         return
@@ -86,11 +86,21 @@ def embed_new(db: DB) -> None:
     if len(pending) > EMBED_PER_RUN:
         print(f"[embed] {len(pending)} pending — doing {EMBED_PER_RUN} this run, rest next run")
     embedder = Embedder(config.VOYAGE_API_KEY, config.EMBED_MODEL)
-    texts = [creative_text(a) for a in batch]
+    texts  = [creative_text(a) for a in batch]
+    ad_ids = [a["ad_id"] for a in batch]
     print(f"[embed] {len(texts)} ad(s)")
-    vectors = embedder.embed(texts)
-    for ad, vec in zip(batch, vectors):
-        db.save_embedding(ad["ad_id"], vec)
+    try:
+        results = embedder.embed(texts, ad_ids)
+        saved = 0
+        for ad_id, vec in results.items():
+            db.save_embedding(ad_id, vec)
+            saved += 1
+        print(f"[embed] saved {saved}/{len(batch)} embeddings")
+        if saved < len(batch):
+            skipped = len(batch) - saved
+            print(f"[embed] ⚠️ {skipped} ads skipped due to rate-limit — will retry next run")
+    except Exception as e:
+        print(f"[embed] ⚠️ embedding failed: {e} — skipping, pipeline continues")
 
 
 def load_runtime_config(db: DB) -> None:

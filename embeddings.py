@@ -10,9 +10,9 @@ VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 
 # Free tier limits: ~300 RPM, 1M tokens/min.
 # 100 ads/batch with 2s sleep between batches stays well within limits.
-BATCH_SIZE   = 50     # ads per API call (conservative)
-RETRY_MAX    = 4      # number of retries on 429
-RETRY_DELAY  = 15     # seconds to wait after a 429
+BATCH_SIZE   = 25     # أصغر = أقل ضغط على الـ rate limit
+RETRY_MAX    = 5      # محاولات أكثر
+RETRY_DELAY  = 30     # انتظار أطول بعد كل 429
 
 
 def creative_text(ad: dict) -> str:
@@ -33,8 +33,8 @@ class Embedder:
         self.model    = model
         self.headers  = {"Authorization": f"Bearer {self.api_key}"}
 
-    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Single batch call with retry on 429."""
+    def _embed_batch(self, texts: list[str]) -> list[list[float]] | None:
+        """Single batch call with retry on 429. Returns None if all retries fail."""
         for attempt in range(1, RETRY_MAX + 1):
             resp = requests.post(
                 VOYAGE_URL,
@@ -51,15 +51,25 @@ class Embedder:
             data = resp.json()["data"]
             data.sort(key=lambda d: d["index"])
             return [d["embedding"] for d in data]
-        raise RuntimeError("Voyage rate-limit: max retries exceeded.")
+        # بدل الـ crash — نرجع None ونكمّل
+        print(f"[embed] ⚠️ rate-limit exceeded after {RETRY_MAX} attempts — skipping this batch")
+        return None
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        out: list[list[float]] = []
+    def embed(self, texts: list[str], ad_ids: list[str] = None) -> dict[str, list[float]]:
+        """Returns dict: ad_id → vector (skips failed batches gracefully)."""
+        results: dict[str, list[float]] = {}
         total = len(texts)
+        ids = ad_ids or [str(i) for i in range(total)]
         for i in range(0, total, BATCH_SIZE):
-            batch = texts[i : i + BATCH_SIZE]
-            print(f"[embed] batch {i//BATCH_SIZE + 1}/{(total-1)//BATCH_SIZE + 1} ({len(batch)} texts)")
-            out.extend(self._embed_batch(batch))
+            batch_texts = texts[i : i + BATCH_SIZE]
+            batch_ids   = ids[i : i + BATCH_SIZE]
+            batch_num   = i // BATCH_SIZE + 1
+            total_batches = (total - 1) // BATCH_SIZE + 1
+            print(f"[embed] batch {batch_num}/{total_batches} ({len(batch_texts)} texts)")
+            vectors = self._embed_batch(batch_texts)
+            if vectors:
+                for ad_id, vec in zip(batch_ids, vectors):
+                    results[ad_id] = vec
             if i + BATCH_SIZE < total:
-                time.sleep(2)   # gentle pause between batches
-        return out
+                time.sleep(3)   # pause بين الـ batches
+        return results
