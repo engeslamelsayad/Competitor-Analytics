@@ -16,7 +16,7 @@ from diff import diff_clusters
 from scout import reason
 from calendar_mena import upcoming_events
 from report import write_brief
-from telegram import send_brief
+from telegram import send_brief, send_weekly_competitive_report
 from alerts import new_competitor_alert, winning_creatives_digest
 
 EMBED_PER_RUN = 150
@@ -138,6 +138,11 @@ def run_pipeline(db: DB) -> None:
     send_brief(brief, diff_result, longest, calendar)
     new_competitor_alert(db)
     winning_creatives_digest(db, min_days=14)
+
+    # رسالة أسبوعية كل جمعة (weekday 4 = Friday)
+    from datetime import datetime, timezone
+    if datetime.now(timezone.utc).weekday() == 4:
+        send_weekly_competitive_report(db.conn)
 
     print(f"✅ done — {event_type} — brief at {path}")
 

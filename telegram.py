@@ -124,3 +124,87 @@ def send_brief(brief: dict, diff_result: dict,
 
     full_msg = body + themes + winners + cal
     send(full_msg)
+
+
+def send_weekly_competitive_report(conn) -> bool:
+    """رسالة أسبوعية شاملة بالمشهد التنافسي — تُرسَل كل جمعة."""
+    from datetime import datetime, timezone, timedelta, date
+
+    cutoff_week = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff_2w   = datetime.now(timezone.utc) - timedelta(days=14)
+
+    try:
+        total_advertisers = conn.execute(
+            "SELECT COUNT(DISTINCT page_name) FROM competitor_snapshots"
+        ).fetchone()[0]
+
+        active = conn.execute(
+            """SELECT page_name,
+                 COUNT(*) FILTER (WHERE first_seen >= %s) AS new_this_week,
+                 COUNT(*) FILTER (WHERE first_seen >= %s AND first_seen < %s) AS new_last_week,
+                 COUNT(*) AS total
+               FROM competitor_snapshots
+               GROUP BY page_name
+               HAVING COUNT(*) FILTER (WHERE first_seen >= %s) > 0
+               ORDER BY new_this_week DESC LIMIT 10""",
+            (cutoff_week, cutoff_2w, cutoff_week, cutoff_week),
+        ).fetchall()
+
+        by_country = conn.execute(
+            """SELECT country, COUNT(*) AS ads
+               FROM competitor_snapshots
+               WHERE first_seen >= %s
+               GROUP BY country ORDER BY ads DESC LIMIT 5""",
+            (cutoff_week,),
+        ).fetchall()
+
+        winners = conn.execute(
+            """SELECT page_name,
+                      EXTRACT(DAY FROM (now() - start_time))::int AS days
+               FROM competitor_snapshots
+               WHERE start_time IS NOT NULL
+                 AND (stop_time IS NULL OR stop_time > now())
+               ORDER BY start_time ASC LIMIT 5"""
+        ).fetchall()
+
+        total_new = sum(r[1] or 0 for r in active)
+
+    except Exception as e:
+        print("[telegram] weekly report query failed: " + str(e))
+        return False
+
+    week_num = date.today().isocalendar()[1]
+    parts = []
+
+    # Header
+    parts.append("*📊 المشهد التنافسي — الأسبوع " + str(week_num) + "*")
+
+    # Active competitors
+    parts.append("\n*🏢 أكثر المنافسين نشاطاً (" + str(total_new) + " إعلان جديد):*")
+    for name, new_w, new_lw, total in active[:8]:
+        delta = (new_w or 0) - (new_lw or 0)
+        if delta > 0:
+            arrow = " ↑" + str(delta)
+        elif delta < 0:
+            arrow = " ↓" + str(abs(delta))
+        else:
+            arrow = ""
+        badge = " 🆕" if (new_lw or 0) == 0 else ""
+        parts.append("• *" + str(name) + "* — " + str(new_w) + " جديد" + arrow + badge
+                     + " (إجمالي: " + str(total) + ")")
+
+    # By country
+    if by_country:
+        parts.append("\n*🌍 توزيع الإعلانات الجديدة:*")
+        parts.append(" | ".join(str(r[0]) + ": " + str(r[1]) for r in by_country))
+
+    # Total
+    parts.append("\n*👥 إجمالي المعلنين المرصودين: " + str(total_advertisers) + "*")
+
+    # Winners
+    if winners:
+        parts.append("\n*⏳ أطول إعلانات عمراً (Winners):*")
+        for name, days in winners:
+            parts.append("• " + str(name) + " — " + str(days or 0) + " يوم")
+
+    return send("\n".join(parts))
