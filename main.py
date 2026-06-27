@@ -1,15 +1,11 @@
 """
 Scout orchestrator — one run.
 
-  collect (Apify Meta + TikTok)  ->  upsert (dedup + longevity)
-  -> embed new ads (Voyage)      ->  cluster today (HDBSCAN) + label
-  -> persist clusters            ->  diff vs ~14d ago
-  -> reason (Claude)             ->  emit event + write brief
-
-Run on Railway via cron (e.g. every 4h or daily). Locally: python main.py
+  check trigger / scheduled hour  →  collect  →  embed  →  cluster  →  diff
+  →  reason  →  emit event  →  alerts  →  report
 """
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 import config
 from db import DB
@@ -23,9 +19,6 @@ from report import write_brief
 from telegram import send_brief
 from alerts import new_competitor_alert, winning_creatives_digest
 
-
-# Max ads to embed per run — keeps us within Voyage free-tier rate limits.
-# Remaining unemedded ads are picked up automatically in the next run.
 EMBED_PER_RUN = 150
 
 
@@ -34,81 +27,16 @@ def build_sources() -> list:
     if config.META_SOURCE == "apify":
         srcs.append(ApifyMetaSource(config.APIFY_TOKEN, config.APIFY_META_ACTOR))
     else:
-        srcs.append(MetaAdLibrarySource(
-            config.META_ACCESS_TOKEN, config.META_API_VERSION))
+        srcs.append(MetaAdLibrarySource(config.META_ACCESS_TOKEN, config.META_API_VERSION))
     if config.USE_TIKTOK and config.APIFY_TOKEN:
         srcs.append(TikTokCCSource(config.APIFY_TOKEN, config.APIFY_TIKTOK_ACTOR))
     return srcs
 
 
-def collect(sources, db: DB) -> int:
-    """Collect ads using per-term count from SEARCH_TERMS_CONFIG for cost control."""
-    new = 0
-    for src in sources:
-        for country in config.COUNTRIES:
-            # Page IDs: one call per country
-            if config.COMPETITOR_PAGE_IDS:
-                try:
-                    for ad in src.fetch_ads(
-                        country=country,
-                        page_ids=config.COMPETITOR_PAGE_IDS,
-                        limit=config.MAX_ADS_PER_QUERY,
-                    ):
-                        if db.upsert(ad): new += 1
-                except Exception as e:
-                    print(f"[collect] {src.name}/pages/{country}: {e}")
-
-            # Search terms: per-term count (primary gets more, secondary gets less)
-            for term_cfg in config.SEARCH_TERMS_CONFIG:
-                term  = term_cfg["term"]
-                count = term_cfg.get("count", 50)
-                try:
-                    for ad in src.fetch_ads(
-                        country=country,
-                        search_terms=[term],
-                        limit=count,
-                    ):
-                        if db.upsert(ad): new += 1
-                except Exception as e:
-                    print(f"[collect] {src.name}/{country}/{term}: {e}")
-
-    print(f"[collect] {new} new ad(s)")
-    return new
-
-
-def embed_new(db: DB) -> None:
-    """Embed up to EMBED_PER_RUN ads per run — respects Voyage free-tier limits.
-    Gracefully skips failed batches instead of crashing."""
-    pending = db.needs_embedding()
-    if not pending:
-        return
-    batch = pending[:EMBED_PER_RUN]
-    if len(pending) > EMBED_PER_RUN:
-        print(f"[embed] {len(pending)} pending — doing {EMBED_PER_RUN} this run, rest next run")
-    embedder = Embedder(config.VOYAGE_API_KEY, config.EMBED_MODEL)
-    texts  = [creative_text(a) for a in batch]
-    ad_ids = [a["ad_id"] for a in batch]
-    print(f"[embed] {len(texts)} ad(s)")
-    try:
-        results = embedder.embed(texts, ad_ids)
-        saved = 0
-        for ad_id, vec in results.items():
-            db.save_embedding(ad_id, vec)
-            saved += 1
-        print(f"[embed] saved {saved}/{len(batch)} embeddings")
-        if saved < len(batch):
-            skipped = len(batch) - saved
-            print(f"[embed] ⚠️ {skipped} ads skipped due to rate-limit — will retry next run")
-    except Exception as e:
-        print(f"[embed] ⚠️ embedding failed: {e} — skipping, pipeline continues")
-
-
 def load_runtime_config(db: DB) -> None:
-    """Merge DB config into config module — DB values override config.py defaults."""
     live = db.load_config()
     if not live:
-        return  # no dashboard config yet — use config.py as-is
-
+        return
     if live.get("countries"):
         config.COUNTRIES = live["countries"]
     if live.get("competitor_page_ids") is not None:
@@ -127,11 +55,57 @@ def load_runtime_config(db: DB) -> None:
     print("[config] loaded live settings from DB (dashboard override active)")
 
 
-def main() -> None:
-    db = DB(config.DATABASE_URL)
-    db.ensure_schema()
-    load_runtime_config(db)   # ← DB config overrides config.py
+def collect(sources, db: DB) -> int:
+    new = 0
+    for src in sources:
+        for country in config.COUNTRIES:
+            if config.COMPETITOR_PAGE_IDS:
+                try:
+                    for ad in src.fetch_ads(country=country,
+                                            page_ids=config.COMPETITOR_PAGE_IDS,
+                                            limit=config.MAX_ADS_PER_QUERY):
+                        if db.upsert(ad): new += 1
+                except Exception as e:
+                    print(f"[collect] {src.name}/pages/{country}: {e}")
+            for term_cfg in config.SEARCH_TERMS_CONFIG:
+                term  = term_cfg["term"]
+                count = term_cfg.get("count", 50)
+                try:
+                    for ad in src.fetch_ads(country=country,
+                                            search_terms=[term], limit=count):
+                        if db.upsert(ad): new += 1
+                except Exception as e:
+                    print(f"[collect] {src.name}/{country}/{term}: {e}")
+    print(f"[collect] {new} new ad(s)")
+    return new
 
+
+def embed_new(db: DB) -> None:
+    pending = db.needs_embedding()
+    if not pending:
+        return
+    batch = pending[:EMBED_PER_RUN]
+    if len(pending) > EMBED_PER_RUN:
+        print(f"[embed] {len(pending)} pending — doing {EMBED_PER_RUN} this run")
+    embedder = Embedder(config.VOYAGE_API_KEY, config.EMBED_MODEL)
+    texts  = [creative_text(a) for a in batch]
+    ad_ids = [a["ad_id"] for a in batch]
+    print(f"[embed] {len(texts)} ad(s)")
+    try:
+        results = embedder.embed(texts, ad_ids)
+        saved = 0
+        for ad_id, vec in results.items():
+            db.save_embedding(ad_id, vec)
+            saved += 1
+        print(f"[embed] saved {saved}/{len(batch)} embeddings")
+        if saved < len(batch):
+            print(f"[embed] ⚠️ {len(batch)-saved} skipped — will retry next run")
+    except Exception as e:
+        print(f"[embed] ⚠️ embedding failed: {e} — continuing pipeline")
+
+
+def run_pipeline(db: DB) -> None:
+    """Core Scout pipeline."""
     collect(build_sources(), db)
     embed_new(db)
 
@@ -152,9 +126,8 @@ def main() -> None:
         today_clusters, previous, config.CLUSTER_MATCH_THRESHOLD)
 
     calendar = upcoming_events(config.SEASONAL_WINDOW_DAYS)
-    brief = reason(
-        config.STORE, diff_result, previous, calendar,
-        config.ANTHROPIC_API_KEY, config.SCOUT_MODEL, config.CONFIDENCE_FLOOR)
+    brief = reason(config.STORE, diff_result, previous, calendar,
+                   config.ANTHROPIC_API_KEY, config.SCOUT_MODEL, config.CONFIDENCE_FLOOR)
 
     event_type = "opportunity_brief" if brief.get("emit") else "noop"
     db.emit_event(event_type, float(brief.get("confidence", 0)), brief)
@@ -165,8 +138,42 @@ def main() -> None:
     send_brief(brief, diff_result, longest, calendar)
     new_competitor_alert(db)
     winning_creatives_digest(db, min_days=14)
-    db.close()
+
     print(f"✅ done — {event_type} — brief at {path}")
+
+
+def main() -> None:
+    db = DB(config.DATABASE_URL)
+    db.ensure_schema()
+    load_runtime_config(db)
+
+    # ── تحقق: trigger يدوي أو وقت الـ cron اليومي ─────────────────────
+    trigger_id      = db.pending_trigger()
+    is_daily_hour   = datetime.utcnow().hour == 6
+
+    if not trigger_id and not is_daily_hour:
+        print(f"[main] no pending trigger and not 06:00 UTC — skipping")
+        db.close()
+        return
+
+    if trigger_id:
+        print(f"[main] 🟡 manual trigger #{trigger_id} — running pipeline")
+        db.mark_trigger_running(trigger_id)
+    else:
+        print(f"[main] 🕕 scheduled daily run (06:00 UTC)")
+
+    try:
+        run_pipeline(db)
+        if trigger_id:
+            db.mark_trigger_done(trigger_id, "done")
+    except Exception as e:
+        print(f"[main] ❌ pipeline failed: {e}")
+        if trigger_id:
+            try: db.mark_trigger_done(trigger_id, "failed")
+            except: pass
+        raise
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

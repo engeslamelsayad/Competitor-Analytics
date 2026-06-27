@@ -304,6 +304,32 @@ class DB:
         cols = ["page_name","country","ads","since"]
         return [dict(zip(cols,r)) | {"since": str(r[3])} for r in rows]
 
+    # --- run triggers (manual trigger from Dashboard) ----------------------
+
+    def pending_trigger(self) -> int | None:
+        """Return ID of oldest pending trigger, or None."""
+        row = self.conn.execute(
+            "SELECT id FROM run_triggers WHERE status='pending' ORDER BY requested_at ASC LIMIT 1"
+        ).fetchone()
+        return row[0] if row else None
+
+    def mark_trigger_running(self, trigger_id: int) -> None:
+        self.conn.execute(
+            "UPDATE run_triggers SET status='running' WHERE id=%s", (trigger_id,)
+        )
+
+    def mark_trigger_done(self, trigger_id: int, status: str = "done") -> None:
+        self.conn.execute(
+            "UPDATE run_triggers SET status=%s WHERE id=%s", (status, trigger_id)
+        )
+
+    def insert_trigger(self, source: str = "dashboard") -> int:
+        """Insert a new pending trigger. Returns the new trigger ID."""
+        row = self.conn.execute(
+            "INSERT INTO run_triggers (source) VALUES (%s) RETURNING id", (source,)
+        ).fetchone()
+        return row[0]
+
     def close(self):
         self.conn.close()
 

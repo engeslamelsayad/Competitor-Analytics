@@ -93,3 +93,11 @@ CREATE TABLE IF NOT EXISTS swipe_file (
     tags         TEXT DEFAULT '',
     saved_at     TIMESTAMPTZ DEFAULT now()
 );
+
+-- Manual run triggers (from Dashboard "Run Now" button)
+CREATE TABLE IF NOT EXISTS run_triggers (
+    id           BIGSERIAL PRIMARY KEY,
+    requested_at TIMESTAMPTZ DEFAULT now(),
+    status       TEXT DEFAULT 'pending',  -- pending | running | done | failed
+    source       TEXT DEFAULT 'dashboard'
+);

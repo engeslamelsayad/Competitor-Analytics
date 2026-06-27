@@ -1,14 +1,9 @@
-# Railway service config for the Scout.
-# 1) Add the "Postgres + pgvector" template to your project (separate service).
-# 2) In THIS service, set DATABASE_URL = ${{ pgvector.DATABASE_URL }} (private net).
-# 3) Add the other secrets as service variables (see .env.example).
-# 4) The cron below runs the Scout daily at 08:00 UTC. Change to "0 */4 * * *"
-#    for the playbook's 4-hour cadence. You can also set this in the dashboard.
-
 [build]
 builder = "NIXPACKS"
 
 [deploy]
 startCommand = "python main.py"
-cronSchedule = "0 8 * * *"
+# كل 5 دقائق: يفحص لو في trigger يدوي أو وقت الـ run اليومي (06:00 UTC)
+# لو مفيش، بيخرج في ثواني بدون تكلفة
+cronSchedule = "*/5 * * * *"
 restartPolicyType = "NEVER"
