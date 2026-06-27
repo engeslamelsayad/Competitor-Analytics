@@ -35,14 +35,23 @@ def send(text: str) -> bool:
     ok  = True
 
     for chunk in _chunk(text):
+        # نحاول Markdown الأول، ولو فشل نبعت plain text
         resp = requests.post(url, json={
             "chat_id":    CHAT_ID,
             "text":       chunk,
             "parse_mode": "Markdown",
         }, timeout=15)
         if not resp.ok:
-            print(f"[telegram] send failed: {resp.text[:150]}")
-            ok = False
+            data = resp.json()
+            if "parse" in data.get("description", "").lower() or data.get("error_code") == 400:
+                # Markdown فشل بسبب characters خاصة — نبعت plain text
+                resp = requests.post(url, json={
+                    "chat_id": CHAT_ID,
+                    "text":    chunk,
+                }, timeout=15)
+            if not resp.ok:
+                print(f"[telegram] send failed: {resp.text[:150]}")
+                ok = False
 
     return ok
 
