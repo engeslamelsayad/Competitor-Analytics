@@ -21,6 +21,9 @@ COUNTRY_TO_REGION = {
     "SA": "SA", "AE": "AE", "EG": "EG",
     "KW": "KW", "QA": "QA", "BH": "BH",
     "OM": "OM", "MA": "MA",
+    "LY": "LY", "PS": "PS", "LB": "LB",
+    "SY": "SY", "JO": "JO", "IQ": "IQ",
+    "TN": "TN",
 }
 
 def _g(d, *keys, default=""):

@@ -5,7 +5,7 @@ Scout orchestrator — one run.
   →  reason  →  emit event  →  alerts  →  report
 """
 
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 
 import config
 from db import DB
@@ -149,7 +149,7 @@ def main() -> None:
 
     # ── تحقق: trigger يدوي أو وقت الـ cron اليومي ─────────────────────
     trigger_id      = db.pending_trigger()
-    is_daily_hour   = datetime.utcnow().hour == 6
+    is_daily_hour   = datetime.now(timezone.utc).hour == 6
 
     if not trigger_id and not is_daily_hour:
         print(f"[main] no pending trigger and not 06:00 UTC — skipping")
