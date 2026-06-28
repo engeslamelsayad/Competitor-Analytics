@@ -56,8 +56,34 @@ def _pick_title(snapshot: dict) -> str:
 
 
 def _pick_image(snapshot: dict) -> str:
-    """استخرج أفضل صورة preview متاحة من الـ snapshot."""
-    # جرّب cards أولاً
+    """استخرج أفضل صورة preview متاحة من الـ snapshot.
+
+    Priority (verified from actual Apify output):
+      1. snapshot.videos[0].video_preview_image_url  ← video ads
+      2. snapshot.cards[0].resized_image_url          ← carousel/image ads
+      3. snapshot.cards[0].original_image_url
+      4. snapshot.cards[0].video_preview_image_url
+      5. snapshot.images[0] if string URL
+    """
+    # 1. Video ads — preview image داخل videos array
+    videos = snapshot.get("videos") or []
+    if videos:
+        url = videos[0].get("video_preview_image_url", "")
+        if url and str(url).startswith("http"):
+            return str(url)
+
+    # 2. Image / MULTI_IMAGES ads — داخل images array
+    images = snapshot.get("images") or []
+    if images:
+        img = images[0]
+        if isinstance(img, dict):
+            for field in ["original_image_url", "resized_image_url",
+                          "watermarked_resized_image_url"]:
+                url = img.get(field, "")
+                if url and str(url).startswith("http"):
+                    return str(url)
+
+    # 3. Carousel ads — داخل cards array
     cards = snapshot.get("cards") or []
     if cards:
         card = cards[0]
@@ -66,12 +92,14 @@ def _pick_image(snapshot: dict) -> str:
             url = card.get(field, "")
             if url and str(url).startswith("http"):
                 return str(url)
-    # جرّب الـ snapshot مباشرة
-    for field in ["thumbnail", "image_url", "cover_image",
-                  "video_preview_image_url", "resized_image_url"]:
+
+    # 4. Direct snapshot fields (fallback)
+    for field in ["thumbnail", "resized_image_url", "original_image_url",
+                  "video_preview_image_url", "image_url"]:
         url = snapshot.get(field, "")
         if url and str(url).startswith("http"):
             return str(url)
+
     return ""
 
 
