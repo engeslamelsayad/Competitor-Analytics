@@ -53,13 +53,13 @@ class DB:
         self.conn.execute(
             """INSERT INTO competitor_snapshots
                (ad_id,page_id,page_name,country,source,body,title,description,
-                link_caption,platforms,snapshot_url,start_time,stop_time,
+                link_caption,platforms,snapshot_url,image_url,start_time,stop_time,
                 first_seen,last_seen)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (d["ad_id"], d["page_id"], d["page_name"], d["country"], d["source"],
              d["body"], d["title"], d["description"], d["link_caption"],
-             d["platforms"], d["snapshot_url"], _parse_ts(d["start_time"]),
-             _parse_ts(d["stop_time"]), now, now),
+             d["platforms"], d["snapshot_url"], d.get("image_url",""),
+             _parse_ts(d["start_time"]), _parse_ts(d["stop_time"]), now, now),
         )
         return True
 
@@ -88,7 +88,7 @@ class DB:
             (cutoff,),
         ).fetchall()
         cols = ["ad_id", "page_name", "country", "body", "title", "description",
-                "snapshot_url", "start_time", "stop_time", "embedding"]
+                "snapshot_url", "image_url", "start_time", "stop_time", "embedding"]
         return [dict(zip(cols, r)) for r in rows]
 
     def longest_running(self, threshold_days: int, limit: int = 10) -> list[dict]:

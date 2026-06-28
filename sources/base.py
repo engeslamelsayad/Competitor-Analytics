@@ -26,6 +26,7 @@ class NormalizedAd:
     link_caption: str = ""
     platforms: str = ""            # comma-joined, e.g. "facebook,instagram"
     snapshot_url: str = ""
+    image_url: str = ""
     start_time: Optional[str] = None
     stop_time: Optional[str] = None
     source: str = "unknown"        # which adapter produced this

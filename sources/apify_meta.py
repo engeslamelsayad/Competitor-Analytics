@@ -55,6 +55,26 @@ def _pick_title(snapshot: dict) -> str:
     return snapshot.get("title") or ""
 
 
+def _pick_image(snapshot: dict) -> str:
+    """استخرج أفضل صورة preview متاحة من الـ snapshot."""
+    # جرّب cards أولاً
+    cards = snapshot.get("cards") or []
+    if cards:
+        card = cards[0]
+        for field in ["resized_image_url", "original_image_url",
+                      "video_preview_image_url", "image_url"]:
+            url = card.get(field, "")
+            if url and str(url).startswith("http"):
+                return str(url)
+    # جرّب الـ snapshot مباشرة
+    for field in ["thumbnail", "image_url", "cover_image",
+                  "video_preview_image_url", "resized_image_url"]:
+        url = snapshot.get(field, "")
+        if url and str(url).startswith("http"):
+            return str(url)
+    return ""
+
+
 def _pick_description(snapshot: dict) -> str:
     cards = snapshot.get("cards") or []
     if cards:
@@ -159,6 +179,7 @@ class ApifyMetaSource(AdSource):
                 start_time=_ts_to_iso(raw.get("start_date")),
                 stop_time=_ts_to_iso(raw.get("end_date")) if not raw.get("is_active") else None,
                 source=self.name,
+                image_url=_pick_image(snapshot),
                 extra={
                     "is_active": raw.get("is_active"),
                     "display_format": snapshot.get("display_format"),
