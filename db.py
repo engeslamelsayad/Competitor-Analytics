@@ -81,8 +81,8 @@ class DB:
         """Ads seen recently that already have an embedding (today's working set)."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
         rows = self.conn.execute(
-            """SELECT ad_id,page_name,country,body,title,description,snapshot_url,
-                      start_time,stop_time,embedding
+            """SELECT ad_id,page_name,country,body,title,description,
+                      snapshot_url,image_url,start_time,stop_time,embedding
                FROM competitor_snapshots
                WHERE embedding IS NOT NULL AND last_seen >= %s""",
             (cutoff,),
