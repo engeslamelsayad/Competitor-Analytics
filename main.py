@@ -48,18 +48,27 @@ def build_sources() -> list:
 
 
 def load_runtime_config(db: DB) -> None:
-    """DB config (من الداشبورد) بيـ override إعدادات config.py لو موجود."""
+    """DB config (من الداشبورد) بيـ override إعدادات config.py لو موجود.
+
+    ملاحظة مهمة: بنتحقق من *وجود المفتاح* (`"key" in live`) مش من قيمته
+    (`live.get("key")`). الفرق ده حرج لأن `api_config_save` في app.py دايماً
+    بيحفظ كل المفاتيح حتى لو فاضية (لائحة فاضية `[]` أو dict فاضي `{}`).
+    لو استخدمنا truthy check، أي قايمة فاضية (يعني "مسحت كل الـ search terms
+    عمداً من الداشبورد") كانت بترجع False فيتجاهلها الكود، ويفضل يستخدم
+    القيمة الافتراضية القديمة في config.py (زي "Yularay") بدل القايمة
+    الفاضية الحقيقية اللي المستخدم حفظها — وده كان بيخلي الـ Scout يفضل
+    يجمع إعلانات لمصطلحات بحث المفروض اتمسحت من زمان."""
     live = db.load_config()
     if not live:
         return
-    if live.get("countries"):
+    if "countries" in live:
         config.COUNTRIES = live["countries"]
-    if live.get("competitor_page_ids") is not None:
+    if "competitor_page_ids" in live:
         config.COMPETITOR_PAGE_IDS = live["competitor_page_ids"]
-    if live.get("search_terms_config"):
+    if "search_terms_config" in live:
         config.SEARCH_TERMS_CONFIG = live["search_terms_config"]
         config.SEARCH_TERMS = [c["term"] for c in config.SEARCH_TERMS_CONFIG]
-    if live.get("store"):
+    if "store" in live:
         config.STORE = live["store"]
     if "use_tiktok" in live:
         config.USE_TIKTOK = live["use_tiktok"]
