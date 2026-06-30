@@ -9,6 +9,8 @@ confidence gating (below CONFIDENCE_FLOOR => emit nothing).
 import json
 from anthropic import Anthropic
 
+from claude_retry import call_claude
+
 SCOUT_SYSTEM = """You are the Scout agent for a MENA e-commerce brand.
 Your job: examine the competitive landscape and identify ONE high-confidence
 positioning or creative gap the brand should capture in the next 7-14 days.
@@ -62,7 +64,8 @@ def reason(store: dict, diff_result: dict, previous: list[dict],
     }
     client = Anthropic(api_key=api_key) if api_key else Anthropic()
     try:
-        msg = client.messages.create(
+        msg = call_claude(
+            client,
             model=model,
             max_tokens=1500,
             system=SCOUT_SYSTEM,

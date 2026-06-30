@@ -12,6 +12,8 @@ import numpy as np
 from sklearn.cluster import HDBSCAN
 from anthropic import Anthropic
 
+from claude_retry import call_claude
+
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
@@ -65,7 +67,8 @@ def label_clusters(clusters: list[dict], api_key: str, model: str) -> None:
 
     client = Anthropic(api_key=api_key) if api_key else Anthropic()
     try:
-        msg = client.messages.create(
+        msg = call_claude(
+            client,
             model=model,
             max_tokens=800,
             system=LABEL_SYSTEM,

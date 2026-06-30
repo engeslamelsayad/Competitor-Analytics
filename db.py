@@ -330,6 +330,24 @@ class DB:
         ).fetchone()
         return row[0]
 
+    # --- daily run dedup --------------------------------------------------
+
+    def daily_run_done_today(self) -> bool:
+        """هل الـ daily scheduled run (06:00 UTC) اتنفذ النهاردة بالفعل؟
+        يمنع الـ cron (اللي بيشتغل كل 5 دقائق) من تكرار نفس الـ run
+        12 مرة خلال ساعة الـ 6 صباحاً."""
+        row = self.conn.execute(
+            "SELECT 1 FROM daily_runs WHERE run_date = CURRENT_DATE"
+        ).fetchone()
+        return row is not None
+
+    def mark_daily_run_done(self) -> None:
+        """سجّل إن الـ daily run اتنفذ النهاردة."""
+        self.conn.execute(
+            "INSERT INTO daily_runs (run_date) VALUES (CURRENT_DATE) "
+            "ON CONFLICT (run_date) DO NOTHING"
+        )
+
     def close(self):
         self.conn.close()
 

@@ -101,3 +101,11 @@ CREATE TABLE IF NOT EXISTS run_triggers (
     status       TEXT DEFAULT 'pending',  -- pending | running | done | failed
     source       TEXT DEFAULT 'dashboard'
 );
+
+-- Daily scheduled-run tracker (prevents duplicate 06:00 UTC fires from the
+-- */5 * * * * cron — without this, main.py would re-run the full pipeline
+-- ~12 times every day between 06:00 and 06:55 UTC).
+CREATE TABLE IF NOT EXISTS daily_runs (
+    run_date     DATE PRIMARY KEY,
+    completed_at TIMESTAMPTZ DEFAULT now()
+);
