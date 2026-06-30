@@ -109,3 +109,15 @@ CREATE TABLE IF NOT EXISTS daily_runs (
     run_date     DATE PRIMARY KEY,
     completed_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Tracks the last time the user pressed "Hide all" on the dashboard's
+-- Winners tab. Ads with start_time <= dismissed_at are hidden from
+-- /api/winners — a winner reappears only once a genuinely new ad (started
+-- after this timestamp) crosses the min_days threshold. Single row (id=1).
+CREATE TABLE IF NOT EXISTS winners_dismissed (
+    id           INT PRIMARY KEY DEFAULT 1,
+    dismissed_at TIMESTAMPTZ
+);
+
+INSERT INTO winners_dismissed (id, dismissed_at) VALUES (1, NULL)
+ON CONFLICT (id) DO NOTHING;
